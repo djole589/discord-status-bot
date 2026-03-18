@@ -16,7 +16,7 @@ def get_timezone_status():
 
 STATUSES = [
     lambda: {"text": get_timezone_status(), "emoji_name": "clock1"},
-    lambda: {"text": "🕹️ If you want cheats for game dm me", "emoji_name": "joystick"},
+    lambda: {"text": "🕹️ If you want cheats for games dm me", "emoji_name": "joystick"},
     lambda: {"text": "👨‍💻 Programmer | C++ | C# | Py | Java", "emoji_name": "computer"},
     lambda: {"text": "🎮 Intense Gamer Mode ON 😤🔥", "emoji_name": "video_game"},
     lambda: {"text": "💕 Taken by Ema ❤️", "emoji_name": "heart"},
