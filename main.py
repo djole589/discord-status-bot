@@ -12,7 +12,7 @@ USER_TOKEN = os.environ.get("DISCORD_TOKEN")
 def get_timezone_status():
     tz = pytz.timezone("Europe/Belgrade")
     now = datetime.now(tz)
-    return f"🕐 Time Zone: CET (UTC+1) — {now.strftime('%H:%M')}"
+    return f"Time Zone: CET (UTC+1) — {now.strftime('%H:%M')}"
 
 STATUSES = [
     lambda: {"text": get_timezone_status(), "emoji_name": "clock1"},
@@ -56,14 +56,8 @@ def run_server():
 
 threading.Thread(target=run_server, daemon=True).start()
 
-print("Bot pokrenut 🚀")
+print("Bot pokrenut!")
 for status_fn in itertools.cycle(STATUSES):
     s = status_fn()
     set_status(s["text"], s.get("emoji_name"))
     time.sleep(60)
-```
-
-**`requirements.txt`**
-```
-requests
-pytz
