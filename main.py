@@ -15,7 +15,7 @@ def get_timezone_status():
     return f"Time Zone: CET (UTC+1) — {now.strftime('%H:%M')}"
 
 STATUSES = [
-    lambda: {"text": get_timezone_status(), "emoji_name": "clock1"},
+    lambda: {"text": "🕐 " + get_timezone_status(), "emoji_name": None},
     lambda: {"text": "🕹️ If you want cheats for games dm me", "emoji_name": "joystick"},
     lambda: {"text": "👨‍💻 Programmer | C++ | C# | Py | Java", "emoji_name": "computer"},
     lambda: {"text": "🎮 If you need help buildng some game dm me", "emoji_name": "video_game"},
