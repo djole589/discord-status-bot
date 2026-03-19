@@ -97,7 +97,8 @@ def status_changer():
         time.sleep(60)
 
 # ---- Web server za UptimeRobot ----
-def do_GET(self):
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot alive!")
