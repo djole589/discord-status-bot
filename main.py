@@ -116,10 +116,7 @@ threading.Thread(target=start_ws, daemon=True).start()
 print("Bot pokrenut! 🚀")
 while True:
     time.sleep(60)
-```
 
-I dodaj `websocket-client` u `requirements.txt`:
-```
 requests
 pytz
 websocket-client
