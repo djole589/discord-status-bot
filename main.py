@@ -119,7 +119,3 @@ threading.Thread(target=start_ws, daemon=True).start()
 print("Bot pokrenut! 🚀")
 while True:
     time.sleep(60)
-
-requests
-pytz
-websocket-client
