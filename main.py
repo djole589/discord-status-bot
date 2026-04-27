@@ -25,7 +25,7 @@ STATUSES = [
     lambda: "🕹️ If you want cheats for games dm me",
     lambda: "👨‍💻 Programmer | C++ | C# | Py | Java",
     lambda: "🎮 If you need help building some game dm me",
-    lambda: "💕 Taken by Ema ❤️",
+    lambda: "Serbian Nationality 🇷🇸)",
 ]
 
 GENERAL_REPLIES = [
