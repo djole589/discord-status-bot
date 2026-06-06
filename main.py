@@ -1,6 +1,5 @@
 import requests
 import time
-import itertools
 import threading
 import websocket
 import json
@@ -11,24 +10,25 @@ from datetime import datetime
 import pytz
 
 # ---- Config ----
-USER_TOKEN = os.environ.get("DISCORD_TOKEN")
-MY_USER_ID = "705359620763287552"
-SELF_PING_URL = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:8080")
+TOKEN     = os.environ.get("DISCORD_TOKEN", "")
+MY_ID     = "705359620763287552"
+SELF_URL  = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:10000")
 
-# ---- Globals ----
+# ---- State ----
+ws_global          = None
 heartbeat_interval = None
-current_ws = None
-last_replied = {}
-sequence = None
+sequence           = None
+last_replied       = {}
+status_index       = 0
 
 # ---- Statusi ----
-def get_time_status():
-    tz = pytz.timezone("Europe/Belgrade")
+def belgrade_time():
+    tz  = pytz.timezone("Europe/Belgrade")
     now = datetime.now(tz)
-    return f"🕐 CET (UTC+1) — {now.strftime('%H:%M')} Belgrade"
+    return f"🕐 {now.strftime('%H:%M')} — Belgrade"
 
 STATUSES = [
-    lambda: get_time_status(),
+    belgrade_time,
     lambda: "👨‍💻 Programmer | C++ | C# | Python | Java",
     lambda: "🎮 Need game cheats? DM me",
     lambda: "🎮 If you need help building some game dm me",
@@ -38,18 +38,15 @@ STATUSES = [
     lambda: "💀 Yes I'm always online. No I'm not a bot.",
 ]
 
-STREAMING_NAME = "guns.lol/djole_fg"
-STREAMING_URL  = "https://guns.lol/djole_fg"
-
 DM_REPLIES = [
     "hey {name}, im asleep rn, ill reply when i wake up 😴",
-    "sleeping bro {name}, i will get back to you when i wake up 🌙",
+    "sleeping bro {name}, ill get back to you when i wake up 🌙",
     "zzz {name}... ill reply in the morning 😴",
 ]
 
 # ---- Helpers ----
 def is_sleeping():
-    tz = pytz.timezone("Europe/Belgrade")
+    tz  = pytz.timezone("Europe/Belgrade")
     now = datetime.now(tz)
     return 2 <= now.hour < 9
 
@@ -57,28 +54,28 @@ def get_username(user_id):
     try:
         r = requests.get(
             f"https://discord.com/api/v9/users/{user_id}",
-            headers={"Authorization": USER_TOKEN},
+            headers={"Authorization": TOKEN},
             timeout=5
         )
-        data = r.json()
-        return data.get("global_name") or data.get("username") or "bro"
-    except Exception:
+        d = r.json()
+        return d.get("global_name") or d.get("username") or "bro"
+    except:
         return "bro"
 
 def send_dm(channel_id, text):
     try:
         requests.post(
             f"https://discord.com/api/v9/channels/{channel_id}/messages",
-            headers={"Authorization": USER_TOKEN, "Content-Type": "application/json"},
+            headers={"Authorization": TOKEN, "Content-Type": "application/json"},
             json={"content": text},
             timeout=5
         )
-        print(f"[DM] => {text}")
+        print(f"[DM] {text}")
     except Exception as e:
         print(f"[DM Error] {e}")
 
-# ---- Presence ----
-def build_presence(status_text):
+# ---- Presence payload ----
+def make_presence(status_text):
     return {
         "op": 3,
         "d": {
@@ -86,8 +83,8 @@ def build_presence(status_text):
             "activities": [
                 {
                     "type": 1,
-                    "name": STREAMING_NAME,
-                    "url": STREAMING_URL,
+                    "name": "guns.lol/djole_fg",
+                    "url": "https://guns.lol/djole_fg"
                 },
                 {
                     "type": 4,
@@ -101,29 +98,57 @@ def build_presence(status_text):
         }
     }
 
-def update_presence(ws_instance, status_text):
-    try:
-        ws_instance.send(json.dumps(build_presence(status_text)))
-        print(f"[Presence] => {status_text}")
-    except Exception as e:
-        print(f"[Presence Error] {e}")
+def send_presence(status_text):
+    global ws_global
+    if ws_global:
+        try:
+            ws_global.send(json.dumps(make_presence(status_text)))
+            print(f"[Status] {status_text}")
+        except Exception as e:
+            print(f"[Status Error] {e}")
 
-# ---- WebSocket ----
-def send_heartbeat(ws):
+# ---- Heartbeat ----
+def heartbeat_loop(ws):
     global sequence
     while True:
-        if heartbeat_interval:
-            time.sleep(heartbeat_interval / 1000)
-            try:
-                ws.send(json.dumps({"op": 1, "d": sequence}))
-            except Exception:
-                break
+        if not heartbeat_interval:
+            time.sleep(1)
+            continue
+        time.sleep(heartbeat_interval / 1000)
+        try:
+            ws.send(json.dumps({"op": 1, "d": sequence}))
+        except:
+            break
 
+# ---- Status rotacija (u posebnoj niti) ----
+def status_loop():
+    global status_index
+    # Sacekaj da se WS konektuje
+    time.sleep(10)
+    while True:
+        fn          = STATUSES[status_index % len(STATUSES)]
+        status_text = fn()
+        send_presence(status_text)
+        status_index += 1
+        time.sleep(60)
+
+# ---- Self ping ----
+def ping_loop():
+    time.sleep(60)
+    while True:
+        try:
+            requests.get(SELF_URL, timeout=10)
+            print("[Ping] OK")
+        except Exception as e:
+            print(f"[Ping Error] {e}")
+        time.sleep(4 * 60)
+
+# ---- WS callbacks ----
 def on_open(ws):
-    print("[WS] Konekcija otvorena")
+    print("[WS] Otvorena konekcija")
 
 def on_message(ws, message):
-    global heartbeat_interval, current_ws, sequence
+    global heartbeat_interval, ws_global, sequence
 
     data = json.loads(message)
     op   = data.get("op")
@@ -133,41 +158,50 @@ def on_message(ws, message):
     if s:
         sequence = s
 
+    # Hello — pokreni heartbeat i identifikuj se
     if op == 10:
         heartbeat_interval = data["d"]["heartbeat_interval"]
-        threading.Thread(target=send_heartbeat, args=(ws,), daemon=True).start()
+        threading.Thread(target=heartbeat_loop, args=(ws,), daemon=True).start()
 
         ws.send(json.dumps({
             "op": 2,
             "d": {
-                "token": USER_TOKEN,
+                "token": TOKEN,
                 "properties": {
                     "os": "windows",
                     "browser": "chrome",
                     "device": ""
                 },
-                "presence": build_presence(get_time_status())["d"]
+                "presence": make_presence(belgrade_time())["d"]
             }
         }))
 
+    # Ready
     if t == "READY":
-        current_ws = ws
-        print("[WS] ✅ Konektovan i online!")
+        ws_global = ws
+        print("[WS] ✅ Konektovan! Bot je online.")
 
+    # DM poruka
     if t == "MESSAGE_CREATE":
-        msg       = data.get("d", {})
-        author    = msg.get("author", {})
-        author_id = author.get("id")
+        msg        = data.get("d", {})
+        author     = msg.get("author", {})
+        author_id  = author.get("id")
         channel_id = msg.get("channel_id")
         guild_id   = msg.get("guild_id")
 
-        if author.get("bot") or author_id == MY_USER_ID:
+        # Ignoriši botove, sebe, i server poruke
+        if author.get("bot"):
+            return
+        if author_id == MY_ID:
             return
         if guild_id is not None:
             return
+
+        # Samo izmedju 02:00 i 09:00
         if not is_sleeping():
             return
 
+        # Cooldown 2 minuta po osobi
         now = time.time()
         if now - last_replied.get(author_id, 0) < 120:
             return
@@ -180,12 +214,13 @@ def on_message(ws, message):
 def on_error(ws, error):
     print(f"[WS Error] {error}")
 
-def on_close(ws, close_status_code, close_msg):
-    global current_ws
-    current_ws = None
-    print(f"[WS] Zatvoren ({close_status_code}), restartujem za 5s...")
+def on_close(ws, code, msg):
+    global ws_global, heartbeat_interval
+    ws_global          = None
+    heartbeat_interval = None
+    print(f"[WS] Zatvoren ({code}), restart za 5s...")
     time.sleep(5)
-    threading.Thread(target=start_ws, daemon=True).start()
+    start_ws()
 
 def start_ws():
     ws = websocket.WebSocketApp(
@@ -195,53 +230,31 @@ def start_ws():
         on_error=on_error,
         on_close=on_close
     )
-    ws.run_forever()
-
-# ---- Status rotacija ----
-def status_changer():
-    for fn in itertools.cycle(STATUSES):
-        status_text = fn()
-        if current_ws:
-            update_presence(current_ws, status_text)
-        time.sleep(60)
-
-# ---- Self-ping (sprečava Render spin-down) ----
-def self_pinger():
-    time.sleep(30)
-    while True:
-        try:
-            requests.get(SELF_PING_URL, timeout=10)
-            print("[Ping] Self-ping OK")
-        except Exception as e:
-            print(f"[Ping Error] {e}")
-        time.sleep(240)  # svakih 4 minuta
+    ws.run_forever(ping_interval=30, ping_timeout=10)
 
 # ---- HTTP server ----
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(b"Bot is alive!")
-
+        self.wfile.write(b"alive")
     def do_HEAD(self):
         self.send_response(200)
         self.end_headers()
-
     def log_message(self, *args):
         pass
 
 def run_server():
-    port = int(os.environ.get("PORT", 8080))
+    port   = int(os.environ.get("PORT", 10000))
     server = HTTPServer(("0.0.0.0", port), Handler)
-    print(f"[Server] Slusa na portu {port}")
+    print(f"[Server] Port {port}")
     server.serve_forever()
 
 # ---- Start ----
-threading.Thread(target=run_server,     daemon=True).start()
-threading.Thread(target=status_changer, daemon=True).start()
-threading.Thread(target=self_pinger,    daemon=True).start()
-threading.Thread(target=start_ws,       daemon=True).start()
+print("🤖 Pokrecem bot...")
+threading.Thread(target=run_server,  daemon=True).start()
+threading.Thread(target=status_loop, daemon=True).start()
+threading.Thread(target=ping_loop,   daemon=True).start()
 
-print("🤖 Bot pokrenut | made by Djole_fg")
-while True:
-    time.sleep(60)
+# WS u glavnoj niti — ne kao daemon, drzi proces zivin
+start_ws()
