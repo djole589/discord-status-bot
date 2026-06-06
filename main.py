@@ -10,9 +10,9 @@ from datetime import datetime
 import pytz
 
 # ---- Config ----
-TOKEN     = os.environ.get("DISCORD_TOKEN", "")
-MY_ID     = "705359620763287552"
-SELF_URL  = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:10000")
+TOKEN    = os.environ.get("DISCORD_TOKEN", "")
+MY_ID    = "705359620763287552"
+SELF_URL = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:10000")
 
 # ---- State ----
 ws_global          = None
@@ -74,7 +74,23 @@ def send_dm(channel_id, text):
     except Exception as e:
         print(f"[DM Error] {e}")
 
-# ---- Presence payload ----
+# ---- Custom status preko HTTP API (ovo zaista menja status) ----
+def set_custom_status(text):
+    try:
+        r = requests.patch(
+            "https://discord.com/api/v9/users/@me/settings",
+            headers={"Authorization": TOKEN, "Content-Type": "application/json"},
+            json={"custom_status": {"text": text, "emoji_name": None}},
+            timeout=5
+        )
+        if r.status_code == 200:
+            print(f"[Status OK] {text}")
+        else:
+            print(f"[Status Error] {r.status_code} {r.text}")
+    except Exception as e:
+        print(f"[Status Exception] {e}")
+
+# ---- Presence WS (drzi online + streaming) ----
 def make_presence(status_text):
     return {
         "op": 3,
@@ -98,14 +114,25 @@ def make_presence(status_text):
         }
     }
 
-def send_presence(status_text):
+def send_ws_presence(status_text):
     global ws_global
     if ws_global:
         try:
             ws_global.send(json.dumps(make_presence(status_text)))
-            print(f"[Status] {status_text}")
         except Exception as e:
-            print(f"[Status Error] {e}")
+            print(f"[WS Presence Error] {e}")
+
+# ---- Status loop — menja i preko API i preko WS ----
+def status_loop():
+    global status_index
+    time.sleep(15)
+    while True:
+        fn          = STATUSES[status_index % len(STATUSES)]
+        status_text = fn()
+        set_custom_status(status_text)
+        send_ws_presence(status_text)
+        status_index += 1
+        time.sleep(60)
 
 # ---- Heartbeat ----
 def heartbeat_loop(ws):
@@ -119,18 +146,6 @@ def heartbeat_loop(ws):
             ws.send(json.dumps({"op": 1, "d": sequence}))
         except:
             break
-
-# ---- Status rotacija (u posebnoj niti) ----
-def status_loop():
-    global status_index
-    # Sacekaj da se WS konektuje
-    time.sleep(10)
-    while True:
-        fn          = STATUSES[status_index % len(STATUSES)]
-        status_text = fn()
-        send_presence(status_text)
-        status_index += 1
-        time.sleep(60)
 
 # ---- Self ping ----
 def ping_loop():
@@ -158,11 +173,9 @@ def on_message(ws, message):
     if s:
         sequence = s
 
-    # Hello — pokreni heartbeat i identifikuj se
     if op == 10:
         heartbeat_interval = data["d"]["heartbeat_interval"]
         threading.Thread(target=heartbeat_loop, args=(ws,), daemon=True).start()
-
         ws.send(json.dumps({
             "op": 2,
             "d": {
@@ -176,12 +189,10 @@ def on_message(ws, message):
             }
         }))
 
-    # Ready
     if t == "READY":
         ws_global = ws
-        print("[WS] ✅ Konektovan! Bot je online.")
+        print("[WS] Konektovan!")
 
-    # DM poruka
     if t == "MESSAGE_CREATE":
         msg        = data.get("d", {})
         author     = msg.get("author", {})
@@ -189,19 +200,11 @@ def on_message(ws, message):
         channel_id = msg.get("channel_id")
         guild_id   = msg.get("guild_id")
 
-        # Ignoriši botove, sebe, i server poruke
-        if author.get("bot"):
+        if author.get("bot") or author_id == MY_ID or guild_id is not None:
             return
-        if author_id == MY_ID:
-            return
-        if guild_id is not None:
-            return
-
-        # Samo izmedju 02:00 i 09:00
         if not is_sleeping():
             return
 
-        # Cooldown 2 minuta po osobi
         now = time.time()
         if now - last_replied.get(author_id, 0) < 120:
             return
@@ -251,10 +254,8 @@ def run_server():
     server.serve_forever()
 
 # ---- Start ----
-print("🤖 Pokrecem bot...")
+print("🤖 Bot pokrenut!")
 threading.Thread(target=run_server,  daemon=True).start()
 threading.Thread(target=status_loop, daemon=True).start()
 threading.Thread(target=ping_loop,   daemon=True).start()
-
-# WS u glavnoj niti — ne kao daemon, drzi proces zivin
 start_ws()
