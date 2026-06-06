@@ -99,7 +99,7 @@ def make_presence(status_text):
             "activities": [
                 {
                     "type": 1,
-                    "name": "guns.lol/djole_fg",
+                    "name": "🔗 guns.lol/djole_fg",
                     "url": "https://guns.lol/djole_fg"
                 },
                 {
