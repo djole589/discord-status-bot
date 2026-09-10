@@ -11,7 +11,7 @@ import pytz
 
 # ---- Config ----
 TOKEN    = os.environ.get("DISCORD_TOKEN", "")
-MY_ID    = "705359620763287552"
+MY_ID    = "YOUR ID"
 SELF_URL = os.environ.get("RENDER_EXTERNAL_URL", "http://localhost:10000")
 
 # ---- State ----
@@ -34,7 +34,7 @@ STATUSES = [
     lambda: "🎮 If you need help building some game dm me",
     lambda: "🕹️ If you want cheats for games dm me",
     lambda: "🛠️ Building something cool...",
-    lambda: "🇷🇸 Serbian Nationality",
+    lambda: "--Whatever you want here--",
     lambda: "💀 Yes I'm always online. No I'm not a bot.",
 ]
 
@@ -99,8 +99,8 @@ def make_presence(status_text):
             "activities": [
                 {
                     "type": 1,
-                    "name": "🔗 guns.lol/djole_fg",
-                    "url": "https://guns.lol/djole_fg"
+                    "name": "🔗 guns.lol/your guns.lol",
+                    "url": "https://guns.lol/djole_fg (your link here)"
                 },
                 {
                     "type": 4,
@@ -254,7 +254,7 @@ def run_server():
     server.serve_forever()
 
 # ---- Start ----
-print("🤖 Bot pokrenut!")
+print(" Bot working!")
 threading.Thread(target=run_server,  daemon=True).start()
 threading.Thread(target=status_loop, daemon=True).start()
 threading.Thread(target=ping_loop,   daemon=True).start()
